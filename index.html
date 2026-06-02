@@ -221,7 +221,8 @@
       status:{instruction:defaultStatusRule, example:defaultStatusExample, notes:''},
       regexes:[statusRegex()],
       world:{name:name+' 世界书', description:'', scanDepth:50, tokenBudget:500, recursiveScanning:false, entries:[blankWorldEntry(1), blankWorldEntry(2), blankWorldEntry(3)]},
-      variables:[blankVariable(), blankVariable()]
+      variables:[blankVariable(), blankVariable()],
+      activeIndexes:{greeting:0, regex:0, world:0, variable:0}
     };
   }
   function active(){ return state.projects.find(p=>p.id===state.activeId) || state.projects[0]; }
@@ -628,24 +629,127 @@
     ['exportPngBtn','exportPngBtn2'].forEach(id=>$(id).addEventListener('click',exportPng));
     $('imageInput').addEventListener('change',async e=>{ const file=e.target.files[0]; if(!file) return; try{ await handleImageFile(file); }catch(err){ alert('图片导入失败：'+err.message); } e.target.value=''; });
     $('jsonInput').addEventListener('change',async e=>{ const file=e.target.files[0]; if(!file) return; try{ await handleJsonFile(file); }catch(err){ alert('JSON导入失败：'+err.message); } e.target.value=''; });
-    $('addGreetingBtn').addEventListener('click',()=>{ const p=active(); p.greetings.push(blankGreeting('副开场白 '+p.greetings.length)); renderGreetings(); save(); });
-    $('add3GreetingsBtn').addEventListener('click',()=>{ const p=active(); for(let i=0;i<3;i++) p.greetings.push(blankGreeting('副开场白 '+p.greetings.length)); renderGreetings(); save(); });
-    $('addRegexBtn').addEventListener('click',()=>{ const p=active(); p.regexes.push(blankRegex('新正则脚本')); renderRegexes(); save(); });
+    $('addGreetingBtn').addEventListener('click',()=>{ const p=active(); p.greetings.push(blankGreeting('副开场白 '+p.greetings.length)); ensureActiveIndexes(); p.activeIndexes.greeting=p.greetings.length-1; renderGreetings(); save(); });
+    $('add3GreetingsBtn').addEventListener('click',()=>{ const p=active(); const old=p.greetings.length; for(let i=0;i<3;i++) p.greetings.push(blankGreeting('副开场白 '+p.greetings.length)); ensureActiveIndexes(); p.activeIndexes.greeting=old; renderGreetings(); save(); });
+    $('addRegexBtn').addEventListener('click',()=>{ const p=active(); p.regexes.push(blankRegex('新正则脚本')); ensureActiveIndexes(); p.activeIndexes.regex=p.regexes.length-1; renderRegexes(); save(); });
     $('makeStatusTemplateBtn').addEventListener('click',()=>{ const p=active(); p.status.instruction=defaultStatusRule; p.status.example=defaultStatusExample; if(!p.regexes.some(r=>String(r.scriptName).includes('状态栏'))) p.regexes.unshift(statusRegex()); render(); save(); toast('已生成状态栏输出规则和正则脚本'); });
     $('statusToWorldBtn').addEventListener('click',()=>{ const p=active(); const content=p.status?.instruction||''; if(!content.trim()){ toast('先填状态栏输出规则'); return; } let entry=p.world.entries.find(x=>x.name==='状态栏输出规则'); if(!entry){ entry={...blankWorldEntry(p.world.entries.length+1), name:'状态栏输出规则', keys:'状态栏, status', constant:true, insertion_order:10, comment:'由正则/状态栏页写入'}; p.world.entries.unshift(entry); } entry.content=content; entry.enabled=true; entry.constant=true; renderWorld(); save(); toast('已写入世界书条目'); });
     $('testRegexBtn').addEventListener('click',()=>{ const p=active(); let text=p.status?.example||''; const original=text; const logs=[]; for(const r of (p.regexes||[])){ if(r.disabled===true) continue; try{ const re=parseRegexLiteral(r.findRegex); const before=text; text=text.replace(re,r.replaceString||''); const trims=String(r.trimStringsText||'').split(/\n+/).map(x=>x.trim()).filter(Boolean); trims.forEach(t=>{ if(t) text=text.split(t).join(''); }); logs.push(`【${r.scriptName||'未命名'}】${before===text?'未匹配':'已替换'}`); }catch(err){ logs.push(`【${r.scriptName||'未命名'}】正则错误：${err.message}`); } } $('regexTestOut').textContent=`原文：\n${original}\n\n结果：\n${text}\n\n日志：\n${logs.join('\n')}`; $('regexTestDialog').showModal(); });
     $('closeRegexTestBtn').addEventListener('click',()=>$('regexTestDialog').close());
     $('exportRegexBtn').addEventListener('click',()=>{ const p=active(); const scripts=(p.regexes||[]).map(regexExportObject); downloadText(JSON.stringify(scripts.length===1?scripts[0]:scripts,null,2), sanitizeFilename(p.charName||p.projectName)+'_regex_scripts.json'); toast('已导出正则包'); });
-    $('addWorldBtn').addEventListener('click',()=>{ const p=active(); p.world.entries.push(blankWorldEntry(p.world.entries.length+1)); renderWorld(); save(); });
-    $('add5WorldBtn').addEventListener('click',()=>{ const p=active(); for(let i=0;i<5;i++) p.world.entries.push(blankWorldEntry(p.world.entries.length+1)); renderWorld(); save(); });
+    $('addWorldBtn').addEventListener('click',()=>{ const p=active(); p.world.entries.push(blankWorldEntry(p.world.entries.length+1)); ensureActiveIndexes(); p.activeIndexes.world=p.world.entries.length-1; renderWorld(); save(); });
+    $('add5WorldBtn').addEventListener('click',()=>{ const p=active(); const old=p.world.entries.length; for(let i=0;i<5;i++) p.world.entries.push(blankWorldEntry(p.world.entries.length+1)); ensureActiveIndexes(); p.activeIndexes.world=old; renderWorld(); save(); });
     $('exportWorldBtn').addEventListener('click',()=>{ const p=active(); downloadText(JSON.stringify(buildCard().data.character_book,null,2), sanitizeFilename(p.charName||p.projectName)+'_character_book.json'); toast('已导出世界书'); });
-    $('addVariableBtn').addEventListener('click',()=>{ const p=active(); p.variables.push(blankVariable()); renderVariables(); save(); });
-    $('add5VarsBtn').addEventListener('click',()=>{ const p=active(); for(let i=0;i<5;i++) p.variables.push(blankVariable()); renderVariables(); save(); });
+    $('addVariableBtn').addEventListener('click',()=>{ const p=active(); p.variables.push(blankVariable()); ensureActiveIndexes(); p.activeIndexes.variable=p.variables.length-1; renderVariables(); save(); });
+    $('add5VarsBtn').addEventListener('click',()=>{ const p=active(); const old=p.variables.length; for(let i=0;i<5;i++) p.variables.push(blankVariable()); ensureActiveIndexes(); p.activeIndexes.variable=old; renderVariables(); save(); });
     $('refreshJsonBtn').addEventListener('click',()=>{ refreshJson(); toast('已刷新预览'); });
     $('copyJsonBtn').addEventListener('click',async()=>{ await navigator.clipboard.writeText(JSON.stringify(buildCard(),null,2)); toast('JSON已复制'); });
     $('clearAllBtn').addEventListener('click',()=>{ if(confirm('确定清空所有本地项目？')){ localStorage.removeItem(LS_KEY); const p=blankProject('新角色卡'); state={activeId:p.id,projects:[p]}; render(); save(); toast('已清空本地'); } });
     $('fillDemoBtn').addEventListener('click',()=>{ const p=active(); p.projectName='示例角色卡'; p.charName='朝阳'; p.creator='叭叭啦叭叭'; p.characterVersion='1.0'; p.tags='校园, 年下, 状态栏, 正则美化'; p.description='<character_name="朝阳">\n表面像阳光大狗狗的高二男生，实际敏感阴郁，占有欲很强。\n</character_name="朝阳">'; p.personality='热烈、黏人、表面开朗，独处时阴郁敏感。'; p.scenario='校园故事，{{char}}与{{user}}在同一所高中。'; p.mesExample='<START>\n{{user}}: 你怎么还没走？\n{{char}}: 我等你啊。'; p.greetings=[{id:listId('g'),title:'主开场白',content:'傍晚的走廊很安静，朝阳抱着篮球停在你面前，笑得像什么都没发生。'},{id:listId('g'),title:'副开场白：再见',content:'雨下得很急，他站在楼梯转角，手指攥紧伞柄。'},{id:listId('g'),title:'副开场白：深陷',content:'他把你的名字写在纸页角落，划掉，又重新写了一遍。'}]; if(!p.regexes.length) p.regexes=[statusRegex()]; if(!p.world.entries.length) p.world.entries=[blankWorldEntry(1)]; p.world.entries[0].name='状态栏输出规则'; p.world.entries[0].keys='状态栏, status'; p.world.entries[0].content=defaultStatusRule; p.world.entries[0].constant=true; render(); save(); toast('示例已填入'); });
   }
+
+
+  function ensureActiveIndexes(){
+    const p=active();
+    if(!p) return null;
+    p.activeIndexes = p.activeIndexes || {greeting:0, regex:0, world:0, variable:0};
+    ['greeting','regex','world','variable'].forEach(k=>{
+      if(typeof p.activeIndexes[k] !== 'number') p.activeIndexes[k] = Number(p.activeIndexes[k] || 0);
+    });
+    return p;
+  }
+  function applySingleItemMode(containerId, key, label, rerenderFn){
+    const p=ensureActiveIndexes();
+    const wrap=$(containerId);
+    if(!p || !wrap) return;
+
+    const cards=[...wrap.children].filter(x=>x.classList && x.classList.contains('card') && !x.classList.contains('single-nav-card'));
+    const total=cards.length;
+    if(!total) return;
+
+    let idx=Number(p.activeIndexes[key] || 0);
+    if(idx<0) idx=0;
+    if(idx>total-1) idx=total-1;
+    p.activeIndexes[key]=idx;
+
+    cards.forEach((card,i)=>{
+      card.style.display = i===idx ? 'grid' : 'none';
+    });
+
+    const options=cards.map((card,i)=>{
+      const titleNode=card.querySelector('.card-title strong');
+      let title=titleNode ? titleNode.textContent.trim() : `${label} ${i+1}`;
+      const nameInput=card.querySelector('.name,.scriptName,.title,.key');
+      if(nameInput && nameInput.value) title = nameInput.value.trim();
+      return `<option value="${i}" ${i===idx?'selected':''}>${i+1}. ${escapeHtml(title)}</option>`;
+    }).join('');
+
+    const top=document.createElement('div');
+    top.className='card single-nav-card';
+    top.style.boxShadow='none';
+    top.style.background='#f8fbff';
+    top.innerHTML=`<div class="grid3">
+      <div><label>${label}选择</label><select class="select single-select">${options}</select></div>
+      <div><label>当前</label><input class="input" value="${idx+1} / ${total}" disabled /></div>
+      <div><label>切换</label><div class="row"><button class="mini-btn single-prev" ${idx<=0?'disabled':''}>← 上一条</button><button class="mini-btn single-next" ${idx>=total-1?'disabled':''}>下一条 →</button></div></div>
+    </div>`;
+    wrap.insertBefore(top, cards[0]);
+
+    const bottom=document.createElement('div');
+    bottom.className='card single-nav-card';
+    bottom.style.boxShadow='none';
+    bottom.style.background='#fff';
+    bottom.innerHTML=`<div class="row" style="justify-content:space-between;">
+      <button class="mini-btn single-prev" ${idx<=0?'disabled':''}>← 上一条</button>
+      <strong>${idx+1} / ${total}</strong>
+      <button class="mini-btn single-next" ${idx>=total-1?'disabled':''}>下一条 →</button>
+    </div>`;
+    wrap.appendChild(bottom);
+
+    wrap.querySelectorAll('.single-select').forEach(sel=>{
+      sel.addEventListener('change',e=>{
+        p.activeIndexes[key]=Number(e.target.value||0);
+        rerenderFn();
+        save();
+      });
+    });
+    wrap.querySelectorAll('.single-prev').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        p.activeIndexes[key]=Math.max(0, Number(p.activeIndexes[key]||0)-1);
+        rerenderFn();
+        save();
+      });
+    });
+    wrap.querySelectorAll('.single-next').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        p.activeIndexes[key]=Math.min(total-1, Number(p.activeIndexes[key]||0)+1);
+        rerenderFn();
+        save();
+      });
+    });
+  }
+
+  const _renderGreetings = renderGreetings;
+  renderGreetings = function(){
+    _renderGreetings();
+    applySingleItemMode('greetingsList','greeting','开场白',renderGreetings);
+  };
+  const _renderRegexes = renderRegexes;
+  renderRegexes = function(){
+    _renderRegexes();
+    applySingleItemMode('regexList','regex','正则脚本',renderRegexes);
+  };
+  const _renderWorld = renderWorld;
+  renderWorld = function(){
+    _renderWorld();
+    applySingleItemMode('worldList','world','世界书条目',renderWorld);
+  };
+  const _renderVariables = renderVariables;
+  renderVariables = function(){
+    _renderVariables();
+    applySingleItemMode('variablesList','variable','变量',renderVariables);
+  };
+
 
   bindInputs(); bindButtons(); load(); render(); showPage('page-basic');
 })();
